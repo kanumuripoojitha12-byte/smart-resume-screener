@@ -1,0 +1,18 @@
+Job Title: Backend Developer (Node.js / Python)
+
+We are looking for a backend developer with 0-2 years of experience to join our
+engineering team. Responsibilities include building REST APIs, integrating
+databases (SQL/NoSQL), and working with third-party ML/LLM APIs for feature
+development.
+
+Required Skills:
+- Strong knowledge of Node.js or Python
+- Experience with Express.js or FastAPI
+- Familiarity with MongoDB or SQL databases
+- Understanding of REST API design
+- Basic Git/GitHub workflow
+
+Good to have:
+- Exposure to Machine Learning or LLM-based tools
+- Cybersecurity awareness
+- Experience with cloud deployment (AWS/GCP/Azure)

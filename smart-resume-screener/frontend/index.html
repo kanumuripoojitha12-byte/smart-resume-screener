@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Smart Resume Screener</title>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #1e293b; --accent: #38bdf8; --text: #e2e8f0;
+    --muted: #94a3b8; --good: #4ade80; --mid: #facc15; --low: #f87171;
+    --border: #334155;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    background: var(--bg); color: var(--text); padding: 24px;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: var(--muted); margin-bottom: 24px; font-size: 14px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px;
+  }
+  .panel h2 { font-size: 15px; margin: 0 0 12px 0; color: var(--accent); }
+  input[type=text], textarea, input[type=file] {
+    width: 100%; background: #0f172a; border: 1px solid var(--border);
+    color: var(--text); padding: 8px 10px; border-radius: 6px; font-size: 13px;
+    margin-bottom: 10px;
+  }
+  textarea { min-height: 100px; resize: vertical; font-family: inherit; }
+  button {
+    background: var(--accent); color: #0f172a; border: none;
+    padding: 9px 16px; border-radius: 6px; font-weight: 600; cursor: pointer;
+    font-size: 13px;
+  }
+  button:hover { opacity: 0.9; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .status { font-size: 12px; color: var(--muted); margin-top: 6px; min-height: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  .score { font-weight: 700; padding: 3px 10px; border-radius: 20px; display: inline-block; }
+  .score-high { background: rgba(74,222,128,0.15); color: var(--good); }
+  .score-mid  { background: rgba(250,204,21,0.15); color: var(--mid); }
+  .score-low  { background: rgba(248,113,113,0.15); color: var(--low); }
+  .justification { color: var(--muted); font-size: 12px; margin-top: 3px; display: block; max-width: 480px; }
+  select { width: 100%; padding: 8px; margin-bottom: 10px; background:#0f172a; color: var(--text); border: 1px solid var(--border); border-radius: 6px; }
+  .toggle { display: flex; gap: 8px; margin-bottom: 10px; }
+  .toggle-btn {
+    flex: 1; background: #0f172a; color: var(--muted); border: 1px solid var(--border);
+    padding: 7px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer;
+  }
+  .toggle-btn.active { background: rgba(56,189,248,0.15); color: var(--accent); border-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<h1>🎯 Smart Resume Screener</h1>
+<div class="sub">Upload resumes, paste a job description, and let the LLM rank candidates.</div>
+
+<div class="grid">
+  <div class="panel">
+    <h2>1. Upload Resume</h2>
+    <input type="file" id="resumeFile" accept=".pdf,.txt" />
+    <button onclick="uploadResume()">Upload &amp; Parse</button>
+    <div class="status" id="resumeStatus"></div>
+  </div>
+
+  <div class="panel">
+    <h2>2. Add Job Description</h2>
+    <input type="text" id="jobTitle" placeholder="Job title (e.g. Backend Engineer)" />
+
+    <div class="toggle">
+      <button type="button" class="toggle-btn active" id="pasteTab" onclick="setJobInputMode('paste')">Paste text</button>
+      <button type="button" class="toggle-btn" id="attachTab" onclick="setJobInputMode('attach')">Attach file</button>
+    </div>
+
+    <textarea id="jobText" placeholder="Paste the full job description here..."></textarea>
+    <input type="file" id="jobFile" accept=".pdf,.txt" style="display:none;" />
+
+    <button onclick="createJob()">Save Job Description</button>
+    <div class="status" id="jobStatus"></div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:24px;">
+  <h2>3. Run Matching</h2>
+  <select id="jobSelect"></select>
+  <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+    <button onclick="runMatch()">Match All Candidates (Slow)</button>
+    <button onclick="viewMatches()" style="background: var(--mid);">View Existing Matches (Fast)</button>
+  </div>
+  <div class="status" id="matchStatus"></div>
+</div>
+
+<div class="panel">
+  <h2>Shortlisted Candidates</h2>
+  <table id="resultsTable">
+    <thead>
+      <tr><th>Rank</th><th>Candidate</th><th>Fit Score</th><th>Details</th></tr>
+    </thead>
+    <tbody id="resultsBody"></tbody>
+  </table>
+</div>
+
+<script>
+const API_BASE = "http://localhost:8000"; // change if backend runs elsewhere
+
+async function uploadResume() {
+  const fileInput = document.getElementById('resumeFile');
+  const status = document.getElementById('resumeStatus');
+  if (!fileInput.files.length) { status.textContent = "Choose a file first."; return; }
+
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+  status.textContent = "Uploading & extracting via LLM...";
+
+  try {
+    const res = await fetch(`${API_BASE}/resumes/upload`, { method: 'POST', body: formData });
+    if (!res.ok) throw new Error((await res.json()).detail || 'Upload failed');
+    const data = await res.json();
+    status.textContent = `✅ Parsed: ${data.name || data.filename} — ${data.skills || 'no skills found'}`;
+  } catch (err) {
+    status.textContent = `❌ ${err.message}`;
+  }
+}
+
+let jobInputMode = 'paste'; // 'paste' or 'attach'
+
+function setJobInputMode(mode) {
+  jobInputMode = mode;
+  const pasteTab = document.getElementById('pasteTab');
+  const attachTab = document.getElementById('attachTab');
+  const textArea = document.getElementById('jobText');
+  const fileInput = document.getElementById('jobFile');
+
+  pasteTab.classList.toggle('active', mode === 'paste');
+  attachTab.classList.toggle('active', mode === 'attach');
+  textArea.style.display = mode === 'paste' ? 'block' : 'none';
+  fileInput.style.display = mode === 'attach' ? 'block' : 'none';
+}
+
+async function createJob() {
+  const title = document.getElementById('jobTitle').value.trim();
+  const status = document.getElementById('jobStatus');
+
+  if (!title) { status.textContent = "Enter a job title."; return; }
+
+  try {
+    let res;
+
+    if (jobInputMode === 'paste') {
+      const text = document.getElementById('jobText').value.trim();
+      if (!text) { status.textContent = "Paste the job description text."; return; }
+
+      res = await fetch(`${API_BASE}/jobs`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, raw_text: text })
+      });
+    } else {
+      const fileInput = document.getElementById('jobFile');
+      if (!fileInput.files.length) { status.textContent = "Choose a JD file to attach."; return; }
+
+      const formData = new FormData();
+      formData.append('title', title);
+      formData.append('file', fileInput.files[0]);
+
+      status.textContent = "Uploading & extracting text from file...";
+      res = await fetch(`${API_BASE}/jobs/upload`, { method: 'POST', body: formData });
+    }
+
+    if (!res.ok) throw new Error((await res.json()).detail || 'Failed to save job');
+
+    status.textContent = "✅ Job description saved.";
+    document.getElementById('jobTitle').value = "";
+    document.getElementById('jobText').value = "";
+    document.getElementById('jobFile').value = "";
+    loadJobs();
+  } catch (err) {
+    status.textContent = `❌ ${err.message}`;
+  }
+}
+
+async function loadJobs() {
+  const select = document.getElementById('jobSelect');
+  try {
+    const res = await fetch(`${API_BASE}/jobs`);
+    if (!res.ok) throw new Error(`GET /jobs failed: ${res.status} ${res.statusText}`);
+    const jobs = await res.json();
+    console.log('[loadJobs] jobs from backend:', jobs);
+    if (!Array.isArray(jobs) || jobs.length === 0) {
+      select.innerHTML = `<option value="">No job descriptions yet — save one above</option>`;
+      return;
+    }
+    select.innerHTML = jobs.map(j => `<option value="${j.id}">${j.title}</option>`).join('');
+  } catch (err) {
+    console.error('[loadJobs] failed:', err);
+    select.innerHTML = `<option value="">⚠️ Couldn't load jobs (see console)</option>`;
+  }
+}
+
+async function runMatch() {
+  const jobId = document.getElementById('jobSelect').value;
+  const status = document.getElementById('matchStatus');
+  if (!jobId) { status.textContent = "Create a job description first."; return; }
+
+  status.textContent = "Scoring candidates with LLM... this may take a moment.";
+  try {
+    const res = await fetch(`${API_BASE}/match`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_id: parseInt(jobId) })
+    });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.detail || `POST /match failed: ${res.status} ${res.statusText}`);
+    }
+    const results = await res.json();
+    console.log('[runMatch] raw response:', results);
+
+    // Some backends wrap the list, e.g. { matches: [...] } instead of a bare array.
+    const list = Array.isArray(results) ? results : (results.matches || results.results || []);
+
+    if (!Array.isArray(list) || list.length === 0) {
+      status.textContent = "⚠️ Request succeeded but returned 0 candidates. Have you uploaded any resumes?";
+      renderResults([]);
+      return;
+    }
+
+    renderResults(list);
+    status.textContent = `✅ Matched ${list.length} candidates.`;
+  } catch (err) {
+    console.error('[runMatch] failed:', err);
+    status.textContent = `❌ ${err.message}`;
+  }
+}
+
+async function viewMatches() {
+  const jobId = document.getElementById('jobSelect').value;
+  const status = document.getElementById('matchStatus');
+  if (!jobId) { status.textContent = "Select a job description first."; return; }
+
+  status.textContent = "Loading existing matches from database...";
+  
+  try {
+    // This calls the GET endpoint to retrieve already-scored candidates
+    const res = await fetch(`${API_BASE}/jobs/${jobId}/matches`);
+    if (!res.ok) throw new Error(`Failed to load matches: ${res.status}`);
+    
+    const list = await res.json();
+
+    if (!Array.isArray(list) || list.length === 0) {
+      status.textContent = "⚠️ No matches found in the database. Run the matching process first.";
+      renderResults([]);
+      return;
+    }
+
+    renderResults(list);
+    status.textContent = `✅ Loaded ${list.length} existing matches from database.`;
+  } catch (err) {
+    console.error('[viewMatches] failed:', err);
+    status.textContent = `❌ ${err.message}`;
+  }
+}
+
+function scoreClass(score) {
+  if (score >= 7) return 'score-high';
+  if (score >= 4) return 'score-mid';
+  return 'score-low';
+}
+
+function renderResults(results) {
+  const body = document.getElementById('resultsBody');
+  if (!results.length) {
+    body.innerHTML = `<tr><td colspan="4" style="color:var(--muted);">No results.</td></tr>`;
+    return;
+  }
+  body.innerHTML = results.map((r, i) => {
+    const score = Number(r.score) || 0;
+    return `
+    <tr>
+      <td>#${i + 1}</td>
+      <td>${r.candidate_name || r.candidate_filename || 'Unknown'}</td>
+      <td><span class="score ${scoreClass(score)}">${score.toFixed(1)}/10</span></td>
+      <td><span class="justification">${r.justification || ''}</span></td>
+    </tr>
+  `;
+  }).join('');
+}
+
+loadJobs();
+</script>
+</body>
+</html>

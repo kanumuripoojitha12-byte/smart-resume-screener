@@ -1,0 +1,23 @@
+Pooji Kumar
+Email: pooji.kumar@example.com | Phone: +91-9876543210
+
+EDUCATION
+B.Tech in Computer Science and Engineering, VIT Chennai (2022 - 2026)
+
+SKILLS
+Python, JavaScript, React, Node.js, Express.js, MongoDB, SQL, Git,
+Machine Learning basics, Computer Vision (OpenCV), Arduino, Networking (Nmap, Wireshark),
+Cybersecurity fundamentals (IBM Cybersecurity Certified)
+
+EXPERIENCE
+Control Room Operator Intern, VITOPIA (6 months)
+- Monitored live systems and handled operational alerts in real time.
+
+PROJECTS
+- VigilEye: Fatigue detection system using computer vision, Arduino and sensor integration.
+- Network Scanning and Mapping Tool built with Nmap and Wireshark for security auditing.
+- WiFi Security Analyzer: scanned nearby wireless networks and scored each on security posture.
+- Voice to Sign Language animation prototype using Web Speech API and Three.js.
+
+CERTIFICATIONS
+IBM Cybersecurity Fundamentals
